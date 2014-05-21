@@ -36,7 +36,6 @@ function fillpdf_menu() {
   $access = array('administer pdfs');
   $items = array();
 
-  // fillpdf?fid=10&nids[]=1&webforms[0][nid]=2&webforms[0][sid]=3
   $items['fillpdf'] = array(
     'page callback' => 'fillpdf_parse_uri',
     // Can't use access callback.  We need the arguments, but they're passed as $GET.  Will access-check in fillpdf_merge_pdf
@@ -126,36 +125,29 @@ function fillpdf_permission() {
 
 /**
  * Gets a link to the prinable PDF, merged with the passed-in data
- * @param array/int $nids or $nid, if you pass in one value it will merge with that node.
- *  If array, it will merge with multiple nodes, with later nids overriding previous ones.
- * @param array $webforms Array of webforms, of this strucure: array('nid'=>1, 'sid'=>1)
+ * @param array/int $entity_ids or $entity_id, if you pass in one value it will merge with that entity.
+ *  If array, it will merge with multiple entities, with later ids overriding previous ones.
+ * @param string $entity_type
  * @param bool $sample TRUE if you want to populate the form with its own field-names (to get a gist of PDF)
  */
-function fillpdf_pdf_link($fid, $nids = NULL, $webform_arr = NULL, $sample = FALSE) {
-  $nids_uri = $webforms_uri = "";
+function fillpdf_pdf_link($fid, $entity_type = NULL,  $entity_ids = NULL, $sample = FALSE) {
+  $ids_uri = $entity_type_uri = "";
 
-  if (is_array($nids)) {
-    $nids_uri = '&nids[]=' . implode('&nids[]=', $nids);
-  }
-  elseif (isset($nids)) {
-    $nids_uri = "&nids[]={$nids}";
+  if ($entity_type) {
+    $entity_type_uri = "&entity_type={$entity_type}";
   }
 
-  if (is_array($webform_arr)) {
-    if ($webform_arr['nid']) {
-      $webform_arr = array($webform_arr);
-    }
-    foreach ($webform_arr as $key => $webform) {
-      $webforms_uri .= "&webforms[{$key}][nid]={$webform['nid']}";
-    }
-    $webforms_uri .= $webform['sid'] ? "&webforms[{$key}][sid]={$webform['sid']}" : "";
+  if (is_array($entity_ids)) {
+    $ids_uri = '&entity_ids[]=' . implode('&entity_ids[]=', $entity_ids);
   }
+  elseif (isset($entity_ids)) {
+    $ids_uri = "&entity_ids[]={$entity_ids}";
+  }
+
   $sample = $sample ? '&sample=true' : '';
 
-  return url('', array('absolute' => TRUE)) . "fillpdf?fid={$fid}{$nids_uri}{$webforms_uri}{$sample}";
+  return url('', array('absolute' => TRUE)) . "fillpdf?fid={$fid}{$entity_type_uri}{$ids_uri}{$sample}";
 }
-
-
 
 /**
  * Get the data and form that need to be merged, from the $_GET, and print the PDF
@@ -166,10 +158,9 @@ function fillpdf_pdf_link($fid, $nids = NULL, $webform_arr = NULL, $sample = FAL
 function fillpdf_parse_uri() {
   // Avoid undefined index warnings, but don't clobber existing values
   $_GET += array(
-    'nid' => NULL,
-    'nids' => NULL,
-    'webform' => NULL,
-    'webforms' => NULL,
+    'entity_type' => NULL,
+    'entity_id' => NULL,
+    'entity_ids' => NULL,
     'fid' => NULL,
     'sample' => NULL,
     'download' => NULL,
@@ -178,26 +169,24 @@ function fillpdf_parse_uri() {
   $force_download = FALSE;
   $flatten = TRUE;
 
-  //this function called multiple times, cut down on DB calls
-  //    static $get;if($get)return $get;
-  $sample = $_GET['sample']; // is this just the PDF populated with sample data?
+  $sample = $_GET['sample'];
   $fid = $_GET['fid'];
-  $nids = $webforms = array();
+  $entity_ids = array();
+  $entity_type = $_GET['entity_type'];
 
-  if ( $_GET['nid'] || $_GET['nids'] ) {
-    $nids = ( $_GET['nid'] ? array($_GET['nid']) : $_GET['nids'] );
-  }
-  if ( $_GET['webform'] || $_GET['webforms'] ) {
-    $webforms = ( $_GET['webform'] ? array($_GET['webform']) : $_GET['webforms'] );
+  if ($_GET['entity_id'] || $_GET['entity_ids']) {
+    $entity_ids = ($_GET['entity_id'] ? array($_GET['entity_id']) : $_GET['entity_ids'] );
   }
 
   if (isset($_GET['download']) && (int) $_GET['download'] == 1) {
     $force_download = TRUE;
   }
+
   if (isset($_GET['flatten']) && (int) $_GET['flatten'] == 0) {
     $flatten = FALSE;
   }
-  fillpdf_merge_pdf($fid, $nids, $webforms, $sample, $force_download, FALSE, $flatten);
+
+  fillpdf_merge_pdf($fid, $entity_type, $entity_ids, $sample, $force_download, FALSE, $flatten);
 }
 
 /**
@@ -206,10 +195,10 @@ function fillpdf_parse_uri() {
  *
  * @param $fid
  *   The integer ID of the PDF.
- * @param $nids
- *   Array of integer IDs of the CCK nodes from which to draw data.
- * @param $webform_arr
- *   Array of integer IDs of the Webform nodes from which to draw data.
+ * @param $entity_type
+ *   Type of the entity from which to draw data.
+ * @param $entity_ids
+ *   Array of integer IDs of the entities from which to draw data.
  * @param $sample
  *   If "true" (exact string), each field will be filled with its field name.
  * @param $force_download
@@ -235,7 +224,7 @@ function fillpdf_parse_uri() {
  * @see fillpdf_pdf_link()
  * for $_GET params
  */
-function fillpdf_merge_pdf($fid, $nids = NULL, $webform_arr = NULL, $sample = NULL, $force_download = FALSE, $skip_access_check = FALSE, $flatten = TRUE, $handle = TRUE) {
+function fillpdf_merge_pdf($fid, $entity_type = NULL, $entity_ids = NULL, $sample = NULL, $force_download = FALSE, $skip_access_check = FALSE, $flatten = TRUE, $handle = TRUE) {
   // Case 1: No $fid
   if (is_null($fid)) {
     drupal_set_message(t('Fill PDF Form ID required to print a PDF.'), 'warning');
@@ -253,64 +242,20 @@ function fillpdf_merge_pdf($fid, $nids = NULL, $webform_arr = NULL, $sample = NU
 
   global $user;
 
-  $nodes = $webforms = array();
-
-  // If $webform_arr contains entries with an sid, but not an nid, set the nid to the default.
-  if (!empty($fillpdf_info->default_nid) && is_array($webform_arr)) {
-    foreach (array_keys($webform_arr) as $key) {
-      if (empty($webform_arr[$key]['nid'])) {
-        $webform_arr[$key]['nid'] = $fillpdf_info->default_nid;
-      }
-    }
+  // If no type is given, use the default.
+  if (!empty($fillpdf_info->default_entity_type) && empty($entity_ids)) {
+    $entity_type = $fillpdf_info->default_entity_type;
   }
 
-  // If no nid is given, use the default.
-  if (!empty($fillpdf_info->default_nid) && empty($nids) && empty($webform_arr)) {
-    $default_node = node_load($fillpdf_info->default_nid);
-    if ($default_node) {
-      if (empty($default_node->webform)) { // Default node is a non-webform node.
-        $nodes[] = $default_node;
-      }
-      else { // Default node is a webform.
-        $webform_arr = array(array('nid' => $fillpdf_info->default_nid, 'node' => $default_node));
-      }
-    }
+  // If no ids is given, use the default.
+  if (!empty($fillpdf_info->default_nid) && empty($entity_ids)) {
+    $entity_ids = array($fillpdf_info->default_nid);
   }
 
-  // Nodes
-  if (is_array($nids)) {
-    foreach ($nids as $nid) {
-      $nodes[] = node_load($nid);
-    }
-  }
-  // Webforms
-  if (module_exists('webform') && is_array($webform_arr)) {
-
-    // Load the proper submission helper file and account for the different
-    // versions of Webform.
-    $included = module_load_include('inc', 'webform', 'includes/webform.submissions');
-    if ($included === FALSE) {
-      module_load_include('inc', 'webform', 'webform_submissions');
-    }
-
-    foreach ($webform_arr as $webform) {
-      if (!empty($webform['nid'])) {
-        if (empty($webform['sid'])) { // User did not specify submission ID, meaning they want most recent.
-          $webform['sid'] = db_query('SELECT sid FROM {webform_submissions}
-            WHERE nid = :nid AND uid = :uid ORDER BY submitted DESC', array(':nid' => $webform['nid'], ':uid' => $user->uid))->fetchField();
-        }
-        if ($webform['sid'] !== FALSE) {
-          $webforms[] = array(
-            'webform' => empty($webform['node']) ? node_load($webform['nid']) : $webform['node'],
-            'submission' => webform_get_submission($webform['nid'], $webform['sid']),
-          );
-        }
-      }
-    }
-  }
+  $entities = entity_load($entity_type, $entity_ids);
 
   if ($skip_access_check !== TRUE) {
-    if (!fillpdf_merge_pdf_access($nodes, $webforms)) {
+    if (!fillpdf_merge_pdf_access($entity_type, $entities)) {
       drupal_access_denied();
       drupal_exit();
     }
@@ -318,6 +263,7 @@ function fillpdf_merge_pdf($fid, $nids = NULL, $webform_arr = NULL, $sample = NU
 
   $fields = $token_objects = $image_data = array();
   $query = db_query("SELECT * FROM {fillpdf_fields} WHERE fid = :fid", array(':fid' => $fid));
+
   foreach ($query as $obj) {
     $obj->replacements = _fillpdf_replacements_to_array($obj->replacements);
     // Keep track of whether we're dealing with an image or not
@@ -330,21 +276,23 @@ function fillpdf_merge_pdf($fid, $nids = NULL, $webform_arr = NULL, $sample = NU
       $_GET['destination'] = "admin/structure/fillpdf/$fid";
     }
     else {
-      // multiple nids, #516840
+      // multiple ids, #516840
       // we want the last nid in $_GET to override previous ones (aka, of fillpdf?nids[]=1&nids[]=2, 2 wins)
-      $nodes = array_reverse($nodes);
-      $webforms = array_reverse($webforms);
+      $entities = array_reverse($entities);
 
-      // --- node token replacements
-      if (!empty($nodes)) {
-        foreach ($nodes as $node) {
-          $token_objects['node'] = $node;
+      // --- entity token replacements
+      if (!empty($entities)) {
+        foreach ($entities as $entity) {
+          $token_objects[$entity_type] = $entity;
+
           // The third parameter says to clear the value if no token can be generated
-          $token = token_replace($obj->value, array('node' => $node), array('clear' => TRUE));
+          $token = token_replace($obj->value, array($entity_type => $entity), array('clear' => TRUE));
+
           if ($token && $token != $obj->value) {
             break;
           }
         }
+
         $transform_string = TRUE;
         // If they're populating with an Image field
         if (strstr($obj->value, '[stamp:')) {
@@ -355,8 +303,8 @@ function fillpdf_merge_pdf($fid, $nids = NULL, $webform_arr = NULL, $sample = NU
           $left_side = strpos($obj->value, '[stamp:') + 7;
           $right_side = strpos($obj->value, ']');
           $field_name = substr($obj->value, $left_side, $right_side - $left_side);
-          if (isset($node->{$field_name}[$node->language])) {
-            $image_path = $node->{$field_name}[$node->language][0]['uri'];
+          if (isset($entity->{$field_name}[$entity->language])) {
+            $image_path = $entity->{$field_name}[$entity->language][0]['uri'];
             $transform_string = FALSE;
             $fields[$obj->pdf_key] = '{image}' . drupal_realpath($image_path);
             $image_path_info = pathinfo(drupal_realpath($image_path));
@@ -371,24 +319,11 @@ function fillpdf_merge_pdf($fid, $nids = NULL, $webform_arr = NULL, $sample = NU
           }
         }
       }
-      // /--- node token replacements ---
+      // /--- entity token replacements ---
 
-      // --- webform token replacements
-      if (!empty($webforms)) {
-        foreach ($webforms as $webform) {
-          $token_objects['webform'] = $webform['submission'];
-          $token = token_replace($obj->value, array('webform' => $webform['submission']), array('clear' => TRUE));
-          if ($token) {
-            break;
-          }
-        }
-        $transform_string = TRUE;
-      }
-      // /--- webform token replacements ---
       if ($transform_string) {
         // Replace <br /> occurrences with newlines
-        $str = preg_replace('|<br />|', '
-', $token);
+        $str = preg_replace('|<br />|', '', $token);
         $str = _fillpdf_transform_field_value($str, $fillpdf_info->replacements, $obj->replacements);
         $fields[$obj->pdf_key] = $str;
       }
@@ -398,8 +333,7 @@ function fillpdf_merge_pdf($fid, $nids = NULL, $webform_arr = NULL, $sample = NU
   // Provide hook_fillpdf_merge_fields_alter() to let other modules
   // alter fields before pdf generation.
   $context = array(
-    'nodes' => $nodes,
-    'webforms' => $webforms,
+    'entities' => $entities,
   );
   drupal_alter('fillpdf_merge_fields_alter', $fields, $context);
 
@@ -457,15 +391,12 @@ function fillpdf_merge_pdf($fid, $nids = NULL, $webform_arr = NULL, $sample = NU
       drupal_goto();
   }
 
-  if ($webform_arr && isset($webform['webform'])) {
-    $node = $webform['webform'];
-  }
-
-  if (!empty($node)) {
+  if (!empty($entity)) {
     // Log this, could be useful
-    watchdog('fillpdf', 'User generated form "%form" for node "%node".', array(
+    watchdog('fillpdf', 'User generated form "%form" for entity type: "%entity_type" entity ids: "%entity_id".', array(
       '%form' => $fillpdf_info->title,
-      '%node' => $node->title,
+      '%entity_type' => $entity_type,
+      '%entity_id' => implode(',', $entity_ids),
     ));
   }
 
@@ -478,8 +409,7 @@ function fillpdf_merge_pdf($fid, $nids = NULL, $webform_arr = NULL, $sample = NU
   $fillpdf_object->info = $fillpdf_info;
   $fillpdf_object->data = $data;
   $fillpdf_object->context = array(
-    'nodes' => $nodes,
-    'webforms' => $webforms,
+    'entities' => $entities,
   );
   $fillpdf_object->token_objects = $token_objects;
   $fillpdf_object->options = array(
@@ -627,41 +557,19 @@ function fillpdf_fillpdf_merge_pre_handle($fillpdf) {
 /**
  * Make sure the user has access to data they want to populate the PDF
  */
-function fillpdf_merge_pdf_access($nodes = array(), $webforms = array()) {
-  if ( user_access('administer pdfs') || user_access('publish all pdfs') ) {
+function fillpdf_merge_pdf_access($entity_type, $entities = array()) {
+  if (user_access('administer pdfs') || user_access('publish all pdfs')) {
     return TRUE;
   }
   if (!user_access('publish own pdfs')) {
     return FALSE;
   }
-
   global $user;
-  if (empty($webforms)) {
-    foreach ($nodes as $node) {
-      // own node?
-      if ( !(node_access('view', $node)) || ($node->uid != $user->uid) ) {
-        return FALSE;
-      }
+  foreach ($entities as $entity) {
+    if (!(entity_access('view', $entity_type, $entity)) || ($entity->uid != $user->uid)) {
+      return FALSE;
     }
   }
-  else {
-    foreach ($webforms as $webform) {
-      // In this case, we only care that they can view the Webform
-      if (!(node_access('view', node_load($webform['webform']->nid)))) {
-        return FALSE;
-      }
-    }
-  }
-
-  // Own webform submission?
-  if (!(empty($webforms))) {
-    foreach ($webforms as $webform) {
-      if ( !(webform_submission_access($webform['webform'], $webform['submission'], 'view')) ) {
-        return FALSE;
-      }
-    }
-  }
-
   return TRUE;
 }
 

@@ -28,6 +28,11 @@ function fillpdf_schema() {
         'unsigned' => TRUE,
         'not null' => FALSE,
       ),
+      'default_entity_type' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
       'url' => array(
         'type' => 'varchar',
         'length' => 255,
@@ -164,5 +169,15 @@ function fillpdf_update_7004() {
 function fillpdf_update_7005() {
   if (!db_field_exists('fillpdf_forms', 'destination_redirect')) {
     db_add_field('fillpdf_forms', 'destination_redirect', array('type' => 'int', 'size' => 'tiny', 'unsigned' => TRUE, 'not null' => FALSE));
+  }
+}
+
+
+/**
+ * Add field to store default entity type.
+ */
+function fillpdf_update_7006() {
+  if (!db_field_exists('fillpdf_forms', 'default_entity_type')) {
+    db_add_field('fillpdf_forms', 'default_entity_type', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE));
   }
 }

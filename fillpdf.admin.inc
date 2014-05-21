@@ -256,12 +256,21 @@ function fillpdf_form_edit($form, &$form_state, $fid) {
   );
 
   $form['title_tokens_fieldset']['tokens'] = _fillpdf_admin_token_form();
-  $form['default_nid'] = array(
+
+  $form['default_id'] = array(
     '#type' => 'textfield',
-    '#title' => t('Default Node ID'),
-    '#description' => t('When filling a PDF, use this node for the data source if no node is specified in the Fill PDF URL.'),
+    '#title' => t('Default Entity ID'),
+    '#description' => t('When filling a PDF, use this entity for the data source if no entity is specified in the Fill PDF URL.'),
     '#maxlength' => 10,
     '#default_value' => $pdf_form->default_nid,
+  );
+
+  $form['default_entity_type'] = array(
+    '#type' => 'select',
+    '#title' => t('Default Entity Type'),
+    '#options' => _fillpdf_admin_entity_types_options(),
+    '#description' => t('When filling a PDF, use this entity type for the data source if no entity type is specified in the Fill PDF URL.'),
+    '#default_value' => $pdf_form->default_entity_type,
   );
 
   // @@TODO:
@@ -292,15 +301,15 @@ function fillpdf_form_edit($form, &$form_state, $fid) {
   if (!empty($pdf_form->default_nid)) {
     $form['pdf_info']['populate_default'] = array(
       '#type' => 'item',
-      '#title' => 'Fill PDF from default node',
-      '#description' => l(t('Download this PDF filled with data from the default node (@node).', array('@node' => $pdf_form->default_nid)), fillpdf_pdf_link($fid)) . '<br />' .
+      '#title' => 'Fill PDF from default entity',
+      '#description' => l(t('Download this PDF filled with data from the default entity (@entity).', array('@entity' => $pdf_form->default_nid)), fillpdf_pdf_link($fid)) . '<br />' .
       t('If you have set a custom path on this PDF, the sample will be saved there silently.'),
     );
   }
   $form['pdf_info']['form_id'] = array(
     '#type' => 'item',
     '#title' => 'Form Info',
-    '#description' => "Form ID: [$fid].  Populate this form with node IDs, such as /fillpdf?fid=$fid&nid=10<br/>",
+    '#description' => "Form ID: [$fid].  Populate this form with entity IDs, such as /fillpdf?fid=$fid&entity_id=10<br/>",
   );
   $form['extra'] = array(
     '#type' => 'fieldset',
@@ -422,7 +431,8 @@ function fillpdf_form_edit_submit($form, &$form_state) {
     db_update('fillpdf_forms')
   ->fields(array(
       'title' => $form_state['values']['title'],
-      'default_nid' => (int) $form_state['values']['default_nid'] > 0 ? (int) $form_state['values']['default_nid'] : NULL,
+      'default_nid' => (int) $form_state['values']['default_id'] > 0 ? (int) $form_state['values']['default_id'] : NULL,
+      'default_entity_type' => $form_state['values']['default_entity_type'],
       'destination_path' => $form_state['values']['destination_path'],
       'replacements' => $form_state['values']['replacements'],
       'destination_redirect' => $form_state['values']['destination_redirect'],
@@ -697,10 +707,7 @@ function fillpdf_field_edit($form, &$form_state, $pdf_form, $field) {
     '#collapsed' => FALSE,
     '#weight' => 5,
   );
-  $form['tokens_fieldset']['tokens'] = array(
-    '#theme' => 'token_tree',
-    '#token_types' => array('node', 'webform'),
-  );
+  $form['tokens_fieldset']['tokens'] = _fillpdf_admin_token_form();
   $form['extra'] = array(
     '#type' => 'fieldset',
     '#title' => t('Transform values on this field'),
@@ -775,9 +782,19 @@ function fillpdf_update_field(&$pdf_form, &$field, $old_key) {
 }
 
 function _fillpdf_admin_token_form() {
+  $entity_types = entity_get_info();
+  $token_types = array_keys($entity_types);
   return array(
     '#theme' => 'token_tree',
-    '#token_types' => array('node', 'webform'),
+    '#token_types' => $token_types,
   );
 }
 
+function _fillpdf_admin_entity_types_options() {
+  $entity_types = entity_get_info();
+  $options = array(0 => t('--- None ---'));
+  foreach ($entity_types as $key => $value) {
+    $options[$key] = $value['label'];
+  }
+  return $options;
+}
