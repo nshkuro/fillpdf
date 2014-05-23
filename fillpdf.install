@@ -31,7 +31,7 @@ function fillpdf_schema() {
       'default_entity_type' => array(
         'type' => 'varchar',
         'length' => 255,
-        'not null' => TRUE,
+        'not null' => FALSE,
       ),
       'url' => array(
         'type' => 'varchar',
@@ -178,6 +178,6 @@ function fillpdf_update_7005() {
  */
 function fillpdf_update_7006() {
   if (!db_field_exists('fillpdf_forms', 'default_entity_type')) {
-    db_add_field('fillpdf_forms', 'default_entity_type', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE));
+    db_add_field('fillpdf_forms', 'default_entity_type', array('type' => 'varchar', 'length' => 255, 'not null' => FALSE));
   }
 }
