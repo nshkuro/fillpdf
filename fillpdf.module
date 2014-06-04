@@ -243,7 +243,7 @@ function fillpdf_merge_pdf($fid, $entity_type = NULL, $entity_ids = NULL, $sampl
   global $user;
 
   // If no type is given, use the default.
-  if (!empty($fillpdf_info->default_entity_type) && empty($entity_ids)) {
+  if (!empty($fillpdf_info->default_entity_type) && empty($entity_type)) {
     $entity_type = $fillpdf_info->default_entity_type;
   }
 
